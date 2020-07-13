@@ -11,12 +11,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/UBitSandBox/NATIVE-ADVAPI-WIN-JS.git"
+    "url": "https://github.com/UBitSandBox/WIN-PERMISSIONS-JS.git"
   },
   "bugs": {
-    "url": "https://github.com/UBitSandBox/NATIVE-ADVAPI-WIN-JS/issues"
+    "url": "https://github.com/UBitSandBox/WIN-PERMISSIONS-JS/issues"
   },
-  "homepage": "https://github.com/UBitSandBox/NATIVE-ADVAPI-WIN-JS",
+  "homepage": "https://github.com/UBitSandBox/WIN-PERMISSIONS-JS",
   "keywords": [
     "advapi32",
     "permissions",
