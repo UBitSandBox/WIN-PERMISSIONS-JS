@@ -229,10 +229,17 @@ void FolderPermissionsManager::ClearExplicitAccessList(const Napi::CallbackInfo 
 void FolderPermissionsManager::ApplyRights(const Napi::CallbackInfo &info){
     Napi::Env env = info.Env();
 
-    if(explicitAccessList_.size() <= 0){
+    int length = info.Length();
+    if(length != 1 || !info[0].IsBoolean()) {
+        Napi::TypeError::New(env, "Expecting 1 Boolean Parameter").ThrowAsJavaScriptException();
         return;
     }
 
+    if(explicitAccessList_.size() == 0){
+        return;
+    }
+
+    auto disableInheritance = info[0].As<Napi::Boolean>();
     PACL pNewDAcl = NULL;
 
     HRESULT hr = SetEntriesInAclW(explicitAccessList_.size(), &(explicitAccessList_[0]), NULL, &pNewDAcl);
@@ -242,7 +249,7 @@ void FolderPermissionsManager::ApplyRights(const Napi::CallbackInfo &info){
     }
 
     hr = SetNamedSecurityInfoW((LPWSTR)folderPath_.c_str(), SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION, NULL, NULL, pNewDAcl, NULL);
+            disableInheritance?DACL_SECURITY_INFORMATION|PROTECTED_DACL_SECURITY_INFORMATION:DACL_SECURITY_INFORMATION, NULL, NULL, pNewDAcl, NULL);
 
     if(!SUCCEEDED(hr)){
         createWindowsError(env, GetLastError(), "ApplyRights").ThrowAsJavaScriptException();
