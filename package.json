@@ -1,8 +1,8 @@
 {
   "name": "native-advapi-win-js",
   "version": "1.0.0",
-  "description": "Native Wrapper Com Functions (Permissions) wrapper for Node.js",
-  "main": "src/js/index.js",
+  "description": "Folder Permissions Manager, Wrapper for Win32 Native Permissions",
+  "main": "src/js/addon.js",
   "scripts": {
     "install": "node-gyp rebuild"
   },
