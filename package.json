@@ -1,5 +1,5 @@
 {
-  "name": "native-advapi-win-js",
+  "name": "win-permissions-js",
   "version": "1.0.0",
   "description": "Folder Permissions Manager, Wrapper for Win32 Native Permissions",
   "main": "src/js/addon.js",
