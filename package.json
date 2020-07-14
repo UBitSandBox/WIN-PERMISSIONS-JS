@@ -1,6 +1,6 @@
 {
   "name": "win-permissions-js",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Folder Permissions Manager, Wrapper for Win32 Native Permissions",
   "main": "src/js/addon.js",
   "gypfile": true,
