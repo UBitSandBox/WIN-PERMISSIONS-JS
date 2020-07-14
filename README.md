@@ -1,4 +1,7 @@
 # WIN-PERMISSIONS-JS
+
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/d940d6d2301b41ca8894582696618d91)](https://app.codacy.com/gh/UBitSandBox/WIN-PERMISSIONS-JS?utm_source=github.com&utm_medium=referral&utm_content=UBitSandBox/WIN-PERMISSIONS-JS&utm_campaign=Badge_Grade_Dashboard)
+
 Folder Permissions Manager, Wrapper for Win32 Permissions
 
 Usage
