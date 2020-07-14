@@ -102,13 +102,10 @@ HRESULT FolderPermissionsManager::GetSid(std::wstring domain, std::wstring name,
 
     // Create buffers that may be large enough.
     const DWORD INITIAL_SIZE = 32;
-    DWORD cbSid = 0;
     DWORD dwSidBufferSize = INITIAL_SIZE;
-    DWORD cchDomainName = 0;
     DWORD dwDomainBufferSize = INITIAL_SIZE;
     WCHAR * wszDomainName = NULL;
     SID_NAME_USE eSidType;
-    DWORD dwErrorCode = 0;
     HRESULT hr = S_OK;
 
     // Create buffers for the SID and the domain name.
@@ -123,8 +120,8 @@ HRESULT FolderPermissionsManager::GetSid(std::wstring domain, std::wstring name,
     {
 
         // Set the count variables to the buffer sizes and retrieve the SID.
-        cbSid = dwSidBufferSize;
-        cchDomainName = dwDomainBufferSize;
+        DWORD cbSid = dwSidBufferSize;
+        DWORD cchDomainName = dwDomainBufferSize;
         if (LookupAccountNameW(
                 NULL,            // Computer name. NULL for the local computer
                 wszAccNameW.c_str(),
@@ -141,7 +138,7 @@ HRESULT FolderPermissionsManager::GetSid(std::wstring domain, std::wstring name,
             break;
         }
 
-        dwErrorCode = GetLastError();
+        DWORD dwErrorCode = GetLastError();
         wprintf(L"LookupAccountNameW failed. GetLastError returned: %d\n", dwErrorCode);
         hr = HRESULT_FROM_WIN32(dwErrorCode);
         break;
