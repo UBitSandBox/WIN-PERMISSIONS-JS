@@ -30,7 +30,7 @@ class FolderPermissionsManager : public Napi::ObjectWrap<FolderPermissionsManage
         void ApplyRights(const Napi::CallbackInfo& info);
         void ClearExplicitAccessList(const Napi::CallbackInfo& info);
     private:
-        DWORD ConvertStringToAccessMask(std::wstring accessString);
+        DWORD ConvertStringToAccessMask(Napi::Env env, std::wstring accessString);
         HRESULT GetSid(std::wstring domain, std::wstring name, PSID* ppSid);
 
         std::vector<EXPLICIT_ACCESS_W> explicitAccessList_;

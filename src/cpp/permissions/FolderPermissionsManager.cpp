@@ -153,12 +153,21 @@ HRESULT FolderPermissionsManager::GetSid(std::wstring domain, std::wstring name,
  * @param accessString
  * @return Access Mask as DWORD
  */
-DWORD FolderPermissionsManager::ConvertStringToAccessMask(std::wstring accessString){
+DWORD FolderPermissionsManager::ConvertStringToAccessMask(Napi::Env env,std::wstring accessString){
     DWORD maskValue = 0;
     std::wstring temp;
     std::wstringstream wss(accessString);
     while(std::getline(wss, temp, L',')){
-        maskValue |= accessMask_[temp];
+
+        std::map<std::wstring, uint32_t>::iterator it = accessMask_.find(temp);
+
+        //we should make sure element exists in map, otherwise throw
+        if(it == accessMask_.end()){
+            Napi::Error::New(env, "Access Mask String is invalid").ThrowAsJavaScriptException();
+            return maskValue;
+        }
+
+        maskValue |= it->second;
     }
 
     return maskValue;
@@ -181,7 +190,10 @@ void FolderPermissionsManager::AddRight(const Napi::CallbackInfo &info){
     auto isUser = info[3].As<Napi::Boolean>();
     auto propagate = info[4].As<Napi::Boolean>();
 
-    //first check if Group or User exists and Get SID
+    //After Input Variables Check, making sure access mask string is valid
+    auto grfAccessPermissions = FolderPermissionsManager::ConvertStringToAccessMask(env, accessString);
+
+    //Then check if Group or User exists and Get SID
     PSID currentSid;
     HRESULT hr = FolderPermissionsManager::GetSid(domain, name, &currentSid);
     if(!SUCCEEDED(hr)){
@@ -192,7 +204,7 @@ void FolderPermissionsManager::AddRight(const Napi::CallbackInfo &info){
     EXPLICIT_ACCESS_W ea;
     ZeroMemory(&ea, sizeof(EXPLICIT_ACCESS_W));
 
-    ea.grfAccessPermissions = FolderPermissionsManager::ConvertStringToAccessMask(accessString) ;
+    ea.grfAccessPermissions =  grfAccessPermissions;
     ea.grfAccessMode = SET_ACCESS;
     ea.grfInheritance = propagate ? CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE : NO_INHERITANCE;
 
@@ -233,6 +245,7 @@ void FolderPermissionsManager::ApplyRights(const Napi::CallbackInfo &info){
     }
 
     if(explicitAccessList_.size() == 0){
+        Napi::Error::New(env, "Explicit Access List is empty").ThrowAsJavaScriptException();
         return;
     }
 
@@ -240,24 +253,19 @@ void FolderPermissionsManager::ApplyRights(const Napi::CallbackInfo &info){
     PACL pNewDAcl = NULL;
 
     HRESULT hr = SetEntriesInAclW(explicitAccessList_.size(), &(explicitAccessList_[0]), NULL, &pNewDAcl);
-    if(!SUCCEEDED(hr)){
-        createWindowsError(env, GetLastError(), "ApplyRights").ThrowAsJavaScriptException();
-        goto Cleanup;
+    if(SUCCEEDED(hr)) {
+        hr = SetNamedSecurityInfoW((LPWSTR)folderPath_.c_str(), SE_FILE_OBJECT,
+                disableInheritance?DACL_SECURITY_INFORMATION|PROTECTED_DACL_SECURITY_INFORMATION:DACL_SECURITY_INFORMATION, NULL, NULL, pNewDAcl, NULL);
     }
 
-    hr = SetNamedSecurityInfoW((LPWSTR)folderPath_.c_str(), SE_FILE_OBJECT,
-            disableInheritance?DACL_SECURITY_INFORMATION|PROTECTED_DACL_SECURITY_INFORMATION:DACL_SECURITY_INFORMATION, NULL, NULL, pNewDAcl, NULL);
+    // Making sure Resources are freed
+    if(pNewDAcl) {
+        LocalFree(pNewDAcl);
+    }
+
+    FolderPermissionsManager::ClearExplicitAccessList(info);
 
     if(!SUCCEEDED(hr)){
         createWindowsError(env, GetLastError(), "ApplyRights").ThrowAsJavaScriptException();
-        goto Cleanup;
     }
-
-    Cleanup:
-        if(pNewDAcl){
-            LocalFree(pNewDAcl);
-        }
-
-        FolderPermissionsManager::ClearExplicitAccessList(info);
-        return;
 }
