@@ -4,6 +4,21 @@
 
 Folder Permissions Manager, Wrapper for Win32 Permissions
 
+Visual Studio Build Tools > 2017 are needed for win-permissions-js (C++ 17)!!!
+
+```powershell
+$buildToolsUrl="https://aka.ms/vs/16/release/vs_buildtools.exe"
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Invoke-WebRequest -Uri $buildToolsUrl -OutFile "vs_buildtools.exe"
+Start-Process -Wait -NoNewWindow -FilePath .\vs_buildtools.exe -ArgumentList '--quiet', '--wait', '--norestart', '--nocache', '--installPath C:\BuildTools',
+    '--add Microsoft.VisualStudio.Workload.AzureBuildTools',
+    '--remove Microsoft.VisualStudio.Component.Windows10SDK.10240',
+    '--remove Microsoft.VisualStudio.Component.Windows10SDK.10586',
+    '--remove Microsoft.VisualStudio.Component.Windows10SDK.14393',
+    '--remove Microsoft.VisualStudio.Component.Windows81SDK'
+```
+
 Usage
 ```javascript
 
