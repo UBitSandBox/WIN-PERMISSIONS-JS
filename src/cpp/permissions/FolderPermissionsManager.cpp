@@ -593,7 +593,7 @@ FolderPermissionsManager::GetUserGroups(PACL pDacl, std::wstring sidString, std:
         return hr;
     }
 
-    HRESULT hr = GetExplicitEntriesFromAclW(pDacl, &entriesNbr, &entriesArray);
+    hr = GetExplicitEntriesFromAclW(pDacl, &entriesNbr, &entriesArray);
 
     if (FAILED(hr)) {
         return hr;
