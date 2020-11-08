@@ -19,7 +19,8 @@ Napi::Object FolderPermissionsManager::Init(Napi::Env env, Napi::Object exports)
                         "FolderPermissionsManager", {
                                 InstanceMethod("addRight", &FolderPermissionsManager::AddRight),
                                 InstanceMethod("applyRights", &FolderPermissionsManager::ApplyRights),
-                                InstanceMethod("clearExplicitAccessList",&FolderPermissionsManager::ClearExplicitAccessList),
+                                InstanceMethod("clearExplicitAccessList",
+                                               &FolderPermissionsManager::ClearExplicitAccessList),
                                 InstanceMethod("checkUserPermissions", &FolderPermissionsManager::CheckUserPermissions)
                         });
 
@@ -119,6 +120,51 @@ HRESULT FolderPermissionsManager::GetSidFromString(std::wstring sidString, PSID 
     return S_OK;
 }
 
+HRESULT FolderPermissionsManager::GetGuidFromSidString(std::wstring sidString, BSTR *guidValue) {
+
+    std::wstring pszSearchBase = L"LDAP://<SID=" + sidString + L">";
+
+    IADsUser *pIADsUserFromSid = NULL;
+    CoInitialize(NULL);
+
+    HRESULT hr = ADsGetObject(pszSearchBase.c_str(),
+                              IID_IADsUser,
+                              (void **) &pIADsUserFromSid);
+
+    CoUninitialize();
+
+    if (FAILED(hr)) {
+        return hr;
+    }
+
+    pIADsUserFromSid->get_GUID(guidValue);
+    pIADsUserFromSid->Release();
+    pIADsUserFromSid = NULL;
+
+    return hr;
+}
+
+HRESULT FolderPermissionsManager::GetIADsGroupFromSid(PSID groupSid, IADsGroup **iADsGroup) {
+
+    LPWSTR sidString = NULL;
+    HRESULT hr = ConvertSidToStringSidW(groupSid, &sidString);
+
+    if (FAILED(hr)) {
+        return hr;
+    }
+
+    std::wstring sidString_w(sidString);
+    std::wstring pszSearchBase = L"LDAP://<SID=" + sidString_w + L">";
+    CoInitialize(NULL);
+
+    hr = ADsGetObject(pszSearchBase.c_str(), IID_IADsGroup, (void **) iADsGroup);
+
+    LocalFree(sidString);
+    CoUninitialize();
+
+    return hr;
+}
+
 
 /***
  * Getting Sid for Given Account or Active Directory Group.
@@ -194,7 +240,8 @@ DWORD FolderPermissionsManager::ConvertStringToAccessMask(Napi::Env env, std::ws
 
         //we should make sure element exists in map, otherwise throw
         if (it == accessMask_.end()) {
-            createWindowsError(env, HRESULT_FROM_WIN32(EVENT_E_QUERYSYNTAX), "ConvertStringToAccessMask").ThrowAsJavaScriptException();
+            createWindowsError(env, HRESULT_FROM_WIN32(EVENT_E_QUERYSYNTAX),
+                               "ConvertStringToAccessMask").ThrowAsJavaScriptException();
             return maskValue;
         }
 
@@ -226,7 +273,7 @@ void FolderPermissionsManager::AddRight(const Napi::CallbackInfo &info) {
 
     //Then check if Group or User exists and Get SID
     PSID currentSid;
-    HRESULT hr = FolderPermissionsManager::GetSid(domain, name, &currentSid);
+    HRESULT hr = GetSid(domain, name, &currentSid);
     if (!SUCCEEDED(hr)) {
         createWindowsError(env, hr, "GetSid").ThrowAsJavaScriptException();
         return;
@@ -262,18 +309,21 @@ void FolderPermissionsManager::ClearExplicitAccessList(const Napi::CallbackInfo 
     std::vector<EXPLICIT_ACCESS_W>().swap(explicitAccessList_);
 }
 
-void FolderPermissionsManager::MapFileSystemGenericMask(PACCESS_MASK accessMask){
+void FolderPermissionsManager::MapFileSystemGenericMask(PACCESS_MASK accessMask) {
     PGENERIC_MAPPING currentMapping = new GENERIC_MAPPING();
 
     currentMapping->GenericAll = STANDARD_RIGHTS_ALL;
     currentMapping->GenericRead = FILE_READ_ATTRIBUTES | FILE_READ_ACCESS | FILE_READ_EA | READ_CONTROL | SYNCHRONIZE;
-    currentMapping->GenericWrite = FILE_APPEND_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_DATA | FILE_WRITE_EA | READ_CONTROL | SYNCHRONIZE;
+    currentMapping->GenericWrite =
+            FILE_APPEND_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_DATA | FILE_WRITE_EA | READ_CONTROL | SYNCHRONIZE;
     currentMapping->GenericExecute = FILE_EXECUTE | FILE_READ_ATTRIBUTES | READ_CONTROL | SYNCHRONIZE;
 
     MapGenericMask(accessMask, currentMapping);
 }
 
-HRESULT FolderPermissionsManager::UserHasEnoughRights(AUTHZ_CLIENT_CONTEXT_HANDLE hAuthzClient, PSECURITY_DESCRIPTOR pFileSD, ACCESS_MASK accessMask){
+HRESULT
+FolderPermissionsManager::UserHasEnoughRights(AUTHZ_CLIENT_CONTEXT_HANDLE hAuthzClient, PSECURITY_DESCRIPTOR pFileSD,
+                                              ACCESS_MASK accessMask) {
 
     AUTHZ_ACCESS_REQUEST AccessRequest = {0};
     AUTHZ_ACCESS_REPLY AccessReply = {0};
@@ -290,55 +340,324 @@ HRESULT FolderPermissionsManager::UserHasEnoughRights(AUTHZ_CLIENT_CONTEXT_HANDL
 
     RtlZeroMemory(Buffer, sizeof(Buffer));
     AccessReply.ResultListLength = 1;
-    AccessReply.GrantedAccessMask = (PACCESS_MASK) (Buffer);
-    AccessReply.Error = (PDWORD) (Buffer + sizeof(ACCESS_MASK));
+    AccessReply.GrantedAccessMask = (PACCESS_MASK)(Buffer);
+    AccessReply.Error = (PDWORD)(Buffer + sizeof(ACCESS_MASK));
 
 
-    if (!AuthzAccessCheck( 0,
-                           hAuthzClient,
-                           &AccessRequest,
-                           NULL,
-                           pFileSD,
-                           NULL,
-                           0,
-                           &AccessReply,
-                           NULL) ) {
+    if (!AuthzAccessCheck(0,
+                          hAuthzClient,
+                          &AccessRequest,
+                          NULL,
+                          pFileSD,
+                          NULL,
+                          0,
+                          &AccessReply,
+                          NULL)) {
+
+        printf_s("Auth Access Check failed.\n");
         return HRESULT_FROM_WIN32(GetLastError());
     }
 
-    if(*AccessReply.GrantedAccessMask & accessMask){
+    if (*AccessReply.GrantedAccessMask & accessMask) {
+        printf_s("Access Granted!\n");
         return S_OK;
     }
 
     return HRESULT_FROM_WIN32(SE_ERR_ACCESSDENIED);
 }
 
-HRESULT FolderPermissionsManager::CheckUserPermissionsUsingAuthz(PSECURITY_DESCRIPTOR pFileSD, PSID userSID, ACCESS_MASK accessMask){
+HRESULT FolderPermissionsManager::CheckUserPermissionsUsingAuthz(PSECURITY_DESCRIPTOR pFileSD,
+                                                                 std::wstring userSidString,
+                                                                 PSID userSID,
+                                                                 ACCESS_MASK accessMask,
+                                                                 std::vector <std::wstring> groupsSids) {
     AUTHZ_RESOURCE_MANAGER_HANDLE hManager;
 
     BOOL bResult = AuthzInitializeResourceManager(AUTHZ_RM_FLAG_NO_AUDIT, NULL, NULL, NULL, NULL, &hManager);
-    if(!bResult){
+    if (!bResult) {
         return HRESULT_FROM_WIN32(GetLastError());
     }
 
-    LUID unusedId = { 0 };
+    LUID unusedId = {0};
     AUTHZ_CLIENT_CONTEXT_HANDLE hAuthzClientContext = NULL;
     HRESULT hr = S_OK;
 
-    if(AuthzInitializeContextFromSid(0,
-                                            userSID,
-                                            hManager,
-                                            NULL,
-                                            unusedId,
-                                            NULL,
-                                            &hAuthzClientContext)){
-        hr = FolderPermissionsManager::UserHasEnoughRights(hAuthzClientContext, pFileSD, accessMask);
-        AuthzFreeContext(hAuthzClientContext);
+    if (AuthzInitializeContextFromSid(0,
+                                      userSID,
+                                      hManager,
+                                      NULL,
+                                      unusedId,
+                                      NULL,
+                                      &hAuthzClientContext)) {
+
+        AUTHZ_CLIENT_CONTEXT_HANDLE hAuthzClientContextWithGroups = NULL;
+        hr = AddUserGroupsToContext(&hAuthzClientContext, &hAuthzClientContextWithGroups, groupsSids);
+
+        if (SUCCEEDED(hr)) {
+            if (hAuthzClientContextWithGroups != NULL) {
+                AuthzFreeContext(hAuthzClientContext);
+                hr = UserHasEnoughRights(hAuthzClientContextWithGroups, pFileSD, accessMask);
+                AuthzFreeContext(hAuthzClientContextWithGroups);
+            } else {
+                hr = UserHasEnoughRights(hAuthzClientContext, pFileSD, accessMask);
+                AuthzFreeContext(hAuthzClientContext);
+            }
+        }
     } else {
         hr = HRESULT_FROM_WIN32(GetLastError());
     }
 
     AuthzFreeResourceManager(hManager);
+    return hr;
+}
+
+HRESULT FolderPermissionsManager::GetObjectGuid(IDirectoryObject *pDO, BSTR *bsGuid) {
+    GUID *pObjectGUID = NULL;
+    PADS_ATTR_INFO pAttributeEntries;
+    LPWSTR pAttributeName = L"objectGUID";
+    DWORD dwAttributesReturned = 0;
+    HRESULT hr;
+
+    if (!pDO) {
+        return E_FAIL;
+    }
+
+    hr = pDO->GetObjectAttributes(&pAttributeName, 1, &pAttributeEntries, &dwAttributesReturned);
+
+    if (SUCCEEDED(hr) && dwAttributesReturned > 0) {
+        if (pAttributeEntries->dwADsType == ADSTYPE_OCTET_STRING) {
+            pObjectGUID = (GUID * )(pAttributeEntries->pADsValues[0].OctetString.lpValue);
+
+            LPOLESTR szGUID = new WCHAR[64];
+            szGUID[0] = NULL;
+            // Convert GUID to string.
+            ::StringFromGUID2(*pObjectGUID, szGUID, 39);
+            *bsGuid = SysAllocString(szGUID);
+            delete[] szGUID;
+        }
+    }
+
+    return hr;
+
+}
+
+/***
+ * We need to check if user is member of an authorized group
+ * @param pADsGroup
+ * @param userGuid
+ * @return
+ */
+BOOL FolderPermissionsManager::RecursiveIsMember(IADsGroup *pADsGroup, BSTR userGuid) {
+
+    if (!pADsGroup || !userGuid) {
+        return FALSE;
+    }
+
+    HRESULT hr = S_OK;
+    BOOL bRet = FALSE;
+
+    BSTR bsGroupPath = NULL;
+    hr = pADsGroup->get_ADsPath(&bsGroupPath);
+
+    if (!SUCCEEDED(hr)) {
+        return hr;
+    }
+
+    IADsMembers *pADsMembers = NULL;
+    hr = pADsGroup->Members(&pADsMembers);
+
+    if (SUCCEEDED(hr)) {
+
+        IUnknown *pUnKnown = NULL;
+        hr = pADsMembers->get__NewEnum(&pUnKnown);
+
+        if (SUCCEEDED(hr)) {
+
+            IEnumVARIANT *pEnumVariant = NULL;
+            hr = pUnKnown->QueryInterface(IID_IEnumVARIANT, (void **) &pEnumVariant);
+
+            if (SUCCEEDED(hr)) {
+
+                BOOL fContinue = TRUE;
+
+                while (fContinue) {
+                    ULONG ulElementsFetched = 0;
+                    VARIANT VariantArray[10];
+
+                    hr = ADsEnumerateNext(pEnumVariant, 10,
+                                          VariantArray, &ulElementsFetched);
+
+                    if (ulElementsFetched) {
+
+                        for (ULONG i = 0; i < ulElementsFetched; i++) {
+                            // Pointer for holding dispatch of element:
+                            IDispatch *pDispatch = NULL;
+                            BSTR bstrCurrentPath = NULL;
+                            BSTR bstrGuidCurrent = NULL;
+                            IDirectoryObject *pIDOCurrent = NULL;
+
+                            // Get the dispatch pointer for the variant
+                            pDispatch = VariantArray[i].pdispVal;
+                            hr = pDispatch->QueryInterface(IID_IDirectoryObject,
+                                                           (VOID * *) & pIDOCurrent);
+
+                            if (SUCCEEDED(hr)) {
+
+                                hr = GetObjectGuid(pIDOCurrent, &bstrGuidCurrent);
+
+                                if (FAILED(hr)) {
+                                    return hr;
+                                }
+
+                                IADs *pIADsCurrent = NULL;
+                                hr = pIDOCurrent->QueryInterface(IID_IADs, (void **) &pIADsCurrent);
+
+                                if (FAILED(hr)) {
+                                    return hr;
+                                }
+
+                                hr = pIADsCurrent->get_ADsPath(&bstrCurrentPath);
+
+                                if (SUCCEEDED(hr)) {
+
+                                    if (_wcsicmp(bstrGuidCurrent, userGuid) == 0) {
+                                        bRet = TRUE;
+                                        break;
+                                    }
+
+                                    IADsGroup *pIADsGroupAsMember = NULL;
+                                    hr = ADsGetObject(bstrCurrentPath,
+                                                      IID_IADsGroup,
+                                                      (void **) &pIADsGroupAsMember);
+
+                                    if (SUCCEEDED(hr)) {
+
+                                        BOOL bRetRecurse = RecursiveIsMember(pIADsGroupAsMember, userGuid);
+                                        if (bRetRecurse) {
+                                            bRet = TRUE;
+                                            break;
+                                        }
+                                        pIADsGroupAsMember->Release();
+                                        pIADsGroupAsMember = NULL;
+                                    }
+                                    SysFreeString(bstrCurrentPath);
+                                    bstrCurrentPath = NULL;
+
+                                    SysFreeString(bstrGuidCurrent);
+                                    bstrGuidCurrent = NULL;
+                                }
+
+                                pIDOCurrent->Release();
+                                pIDOCurrent = NULL;
+
+                                if (pIADsCurrent) {
+                                    pIADsCurrent->Release();
+                                    pIADsCurrent = NULL;
+                                }
+
+                            }
+                        }
+                        memset(VariantArray, 0, sizeof(VARIANT) * 10);
+                    } else {
+                        fContinue = FALSE;
+                    }
+                }
+                pEnumVariant->Release();
+                pEnumVariant = NULL;
+            }
+            pUnKnown->Release();
+            pUnKnown = NULL;
+        }
+        pADsMembers->Release();
+        pADsMembers = NULL;
+    }
+
+    if (bsGroupPath) {
+        SysFreeString(bsGroupPath);
+        bsGroupPath = NULL;
+    }
+
+    return bRet;
+}
+
+HRESULT
+FolderPermissionsManager::GetUserGroups(PACL pDacl, std::wstring sidString, std::vector <std::wstring> *groupsSids) {
+
+    ULONG entriesNbr = 0;
+    PEXPLICIT_ACCESS_W entriesArray;
+
+    BSTR guidValue = NULL;
+    HRESULT hr = GetGuidFromSidString(sidString, &guidValue);
+
+    if (FAILED(hr)) {
+        return hr;
+    }
+
+    HRESULT hr = GetExplicitEntriesFromAclW(pDacl, &entriesNbr, &entriesArray);
+
+    if (FAILED(hr)) {
+        return hr;
+    }
+
+    for (ULONG i = 0; i < entriesNbr; i++) {
+        EXPLICIT_ACCESS_W current = entriesArray[i];
+
+        if (current.Trustee.TrusteeForm != TRUSTEE_IS_SID) {
+            continue;
+        }
+
+        IADsGroup *currentGroup = NULL;
+        GetIADsGroupFromSid((PSID) current.Trustee.ptstrName, &currentGroup);
+        if (RecursiveIsMember(currentGroup, guidValue)) {
+            LPWSTR sidString = NULL;
+            HRESULT hr = ConvertSidToStringSidW((PSID) current.Trustee.ptstrName, &sidString);
+
+            if (FAILED(hr)) {
+                continue;
+            }
+
+            std::wstring sidString_w(sidString);
+            std::wstring whatever = L"current sid:" + sidString_w + L"\n";
+            wprintf_s(whatever.c_str());
+
+            groupsSids->push_back(sidString_w);
+        }
+        currentGroup->Release();
+        currentGroup = NULL;
+    }
+
+    LocalFree(entriesArray);
+    return hr;
+}
+
+HRESULT FolderPermissionsManager::AddUserGroupsToContext(PAUTHZ_CLIENT_CONTEXT_HANDLE hAuthzClient,
+                                                         PAUTHZ_CLIENT_CONTEXT_HANDLE newContext,
+                                                         std::vector <std::wstring> groupsSids) {
+
+    HRESULT hr = S_OK;
+
+    if (groupsSids.size() == 0) {
+        return hr;
+    }
+
+    PSID_AND_ATTRIBUTES usersSids = new SID_AND_ATTRIBUTES[groupsSids.size()];
+    for (int i = 0; i < groupsSids.size(); i++) {
+        GetSidFromString(groupsSids[i], &(usersSids[i].Sid));
+        usersSids[i].Attributes = SE_GROUP_ENABLED;
+    }
+
+    SID_AND_ATTRIBUTES denySids = {0};
+    if (!AuthzAddSidsToContext(*hAuthzClient, usersSids, groupsSids.size(), &denySids, 0, newContext)) {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    //freeing resources
+    for (int i = 0; i < groupsSids.size(); i++) {
+        FreeSid(usersSids[i].Sid);
+    }
+
+    LocalFree(usersSids);
+
     return hr;
 }
 
@@ -367,22 +686,31 @@ void FolderPermissionsManager::CheckUserPermissions(const Napi::CallbackInfo &in
     PSID userSid;
     HRESULT hr = FolderPermissionsManager::GetSidFromString(userSidString, &userSid);
 
-    if(SUCCEEDED(hr)){
+    if (SUCCEEDED(hr)) {
 
         PSECURITY_DESCRIPTOR pFileSD = NULL;
+        PACL pDacl = NULL;
 
-        hr = GetNamedSecurityInfoW((LPWSTR) folderPath_.c_str(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION,
-                                   NULL, NULL, NULL, NULL, &pFileSD);
+        hr = GetNamedSecurityInfoW((LPWSTR) folderPath_.c_str(), SE_FILE_OBJECT,
+                                   DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION,
+                                   NULL, NULL, &pDacl, NULL, &pFileSD);
 
-        if(SUCCEEDED(hr)){
-            hr = FolderPermissionsManager::CheckUserPermissionsUsingAuthz(pFileSD, userSid, grfAccessPermissions);
+        if (SUCCEEDED(hr)) {
+
+            std::vector <std::wstring> usersSids;
+            hr = GetUserGroups(pDacl, userSidString, &usersSids);
+
+            if (SUCCEEDED(hr)) {
+                hr = CheckUserPermissionsUsingAuthz(pFileSD, userSidString, userSid, grfAccessPermissions, usersSids);
+            }
+
             LocalFree(pFileSD);
         }
 
         FreeSid(userSid);
     }
 
-    if(!SUCCEEDED(hr)){
+    if (!SUCCEEDED(hr)) {
         createWindowsError(env, hr, "CheckUserPermissions").ThrowAsJavaScriptException();
         return;
     }
