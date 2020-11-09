@@ -12,6 +12,9 @@
 #include <authz.h>
 #include <iads.h>
 #include <Adshlp.h>
+#include <atlbase.h>
+#include <atlcom.h>
+#include <atlenc.h>
 
 
 #include <codecvt>
@@ -54,7 +57,9 @@ private:
 
     HRESULT GetObjectGuid(IDirectoryObject *pDO, BSTR *bsGuid);
 
-    HRESULT GetIADsGroupFromSid(PSID groupSid, IADsGroup **iADsGroup);
+    BOOL CheckIsMemberUsingSid(PSID groupSid, BSTR userGuid);
+
+    BOOL CheckIsMemberUsingToken(PSID userSid, PSID groupSid);
 
     HRESULT GetUserGroups(PACL pDacl, std::wstring sidString, std::vector <std::wstring> *groupsSids);
 

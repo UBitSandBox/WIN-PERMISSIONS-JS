@@ -123,6 +123,8 @@ HRESULT FolderPermissionsManager::GetSidFromString(std::wstring sidString, PSID 
 HRESULT FolderPermissionsManager::GetGuidFromSidString(std::wstring sidString, BSTR *guidValue) {
 
     std::wstring pszSearchBase = L"LDAP://<SID=" + sidString + L">";
+    wprintf_s(pszSearchBase.c_str());
+    printf_s("\n");
 
     IADsUser *pIADsUserFromSid = NULL;
     CoInitialize(NULL);
@@ -131,38 +133,75 @@ HRESULT FolderPermissionsManager::GetGuidFromSidString(std::wstring sidString, B
                               IID_IADsUser,
                               (void **) &pIADsUserFromSid);
 
-    CoUninitialize();
-
-    if (FAILED(hr)) {
-        return hr;
+    if (SUCCEEDED(hr)) {
+        pIADsUserFromSid->get_GUID(guidValue);
+        pIADsUserFromSid->Release();
+        pIADsUserFromSid = NULL;
     }
 
-    pIADsUserFromSid->get_GUID(guidValue);
-    pIADsUserFromSid->Release();
-    pIADsUserFromSid = NULL;
+    CoUninitialize();
 
     return hr;
 }
 
-HRESULT FolderPermissionsManager::GetIADsGroupFromSid(PSID groupSid, IADsGroup **iADsGroup) {
+BOOL FolderPermissionsManager::CheckIsMemberUsingSid(PSID groupSid, BSTR guidValue) {
 
     LPWSTR sidString = NULL;
     HRESULT hr = ConvertSidToStringSidW(groupSid, &sidString);
 
     if (FAILED(hr)) {
-        return hr;
+        return FALSE;
     }
 
     std::wstring sidString_w(sidString);
     std::wstring pszSearchBase = L"LDAP://<SID=" + sidString_w + L">";
-    CoInitialize(NULL);
 
-    hr = ADsGetObject(pszSearchBase.c_str(), IID_IADsGroup, (void **) iADsGroup);
+    wprintf_s(pszSearchBase.c_str());
+    printf_s("\n");
+
+    IADs *groupFromSid;
+    hr = ADsGetObject(pszSearchBase.c_str(), IID_IADs, (void **) &groupFromSid);
+
+    if (SUCCEEDED(hr)) {
+        BSTR adName;
+        groupFromSid->get_Name(&adName);
+        wprintf_s(adName);
+        printf_s("\n");
+
+        VARIANT dnVariant;
+        hr = groupFromSid->Get(CComBSTR(L"distinguishedName"), &dnVariant);
+
+        if (SUCCEEDED(hr)) {
+
+            CComBSTR dNCBStr = dnVariant.bstrVal;
+
+            std::wstring dncString_w(dNCBStr);
+            std::wstring newSearchBase = L"LDAP://" + dncString_w;
+
+            IADsGroup *iaDsGroup = NULL;
+            hr = ADsGetObject(newSearchBase.c_str(), IID_IADsGroup, (void **) &iaDsGroup);
+
+            if (SUCCEEDED(hr)) {
+                BSTR adsPath;
+                iaDsGroup->get_ADsPath(&adsPath);
+                wprintf_s(adsPath);
+                printf_s("\n");
+
+                BOOL result = RecursiveIsMember(iaDsGroup, guidValue);
+
+                iaDsGroup->Release();
+                iaDsGroup = NULL;
+
+                return result;
+            }
+        }
+
+        groupFromSid->Release();
+        groupFromSid = NULL;
+    }
 
     LocalFree(sidString);
-    CoUninitialize();
-
-    return hr;
+    return FALSE;
 }
 
 
@@ -449,19 +488,13 @@ HRESULT FolderPermissionsManager::GetObjectGuid(IDirectoryObject *pDO, BSTR *bsG
  */
 BOOL FolderPermissionsManager::RecursiveIsMember(IADsGroup *pADsGroup, BSTR userGuid) {
 
-    if (!pADsGroup || !userGuid) {
-        return FALSE;
-    }
+    BSTR adsPath;
+    pADsGroup->get_ADsPath(&adsPath);
+    wprintf_s(adsPath);
+    printf_s("\n");
 
     HRESULT hr = S_OK;
     BOOL bRet = FALSE;
-
-    BSTR bsGroupPath = NULL;
-    hr = pADsGroup->get_ADsPath(&bsGroupPath);
-
-    if (!SUCCEEDED(hr)) {
-        return hr;
-    }
 
     IADsMembers *pADsMembers = NULL;
     hr = pADsGroup->Members(&pADsMembers);
@@ -488,7 +521,6 @@ BOOL FolderPermissionsManager::RecursiveIsMember(IADsGroup *pADsGroup, BSTR user
                                           VariantArray, &ulElementsFetched);
 
                     if (ulElementsFetched) {
-
                         for (ULONG i = 0; i < ulElementsFetched; i++) {
                             // Pointer for holding dispatch of element:
                             IDispatch *pDispatch = NULL;
@@ -572,11 +604,6 @@ BOOL FolderPermissionsManager::RecursiveIsMember(IADsGroup *pADsGroup, BSTR user
         pADsMembers = NULL;
     }
 
-    if (bsGroupPath) {
-        SysFreeString(bsGroupPath);
-        bsGroupPath = NULL;
-    }
-
     return bRet;
 }
 
@@ -599,6 +626,8 @@ FolderPermissionsManager::GetUserGroups(PACL pDacl, std::wstring sidString, std:
         return hr;
     }
 
+    CoInitialize(NULL);
+
     for (ULONG i = 0; i < entriesNbr; i++) {
         EXPLICIT_ACCESS_W current = entriesArray[i];
 
@@ -606,9 +635,10 @@ FolderPermissionsManager::GetUserGroups(PACL pDacl, std::wstring sidString, std:
             continue;
         }
 
-        IADsGroup *currentGroup = NULL;
-        GetIADsGroupFromSid((PSID) current.Trustee.ptstrName, &currentGroup);
-        if (RecursiveIsMember(currentGroup, guidValue)) {
+
+        BOOL result = CheckIsMemberUsingSid((PSID) current.Trustee.ptstrName, guidValue);
+
+        if (result) {
             LPWSTR sidString = NULL;
             HRESULT hr = ConvertSidToStringSidW((PSID) current.Trustee.ptstrName, &sidString);
 
@@ -622,9 +652,9 @@ FolderPermissionsManager::GetUserGroups(PACL pDacl, std::wstring sidString, std:
 
             groupsSids->push_back(sidString_w);
         }
-        currentGroup->Release();
-        currentGroup = NULL;
     }
+
+    CoUninitialize();
 
     LocalFree(entriesArray);
     return hr;

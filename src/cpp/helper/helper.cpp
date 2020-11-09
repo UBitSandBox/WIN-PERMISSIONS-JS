@@ -7,31 +7,36 @@
 using namespace Napi;
 
 // like unique_ptr, but takes a deleter value, not type.
-template <typename T, auto Deleter>
+template<typename T, auto Deleter>
 struct Ptr {
-    T* value = NULL;
+    T *value = NULL;
 
     Ptr() = default;
+
     // No copies
-    Ptr(const Ptr&) = delete;
-    Ptr& operator=(const Ptr&) = delete;
+    Ptr(const Ptr &) = delete;
+
+    Ptr &operator=(const Ptr &) = delete;
+
     // Moves
-    Ptr(Ptr&& other) : value{ other.release() } {}
-    Ptr& operator=(Ptr&& other) {
+    Ptr(Ptr &&other) : value{other.release()} {}
+
+    Ptr &operator=(Ptr &&other) {
         assign(other.release());
     }
 
     ~Ptr() { clear(); }
 
-    operator T*() const { return value; }
-    T* operator ->() const { return value; }
+    operator T *() const { return value; }
 
-    T* assign(T* newValue) {
+    T *operator->() const { return value; }
+
+    T *assign(T *newValue) {
         clear();
         return value = newValue;
     }
 
-    T* release() {
+    T *release() {
         auto result = value;
         value = nullptr;
         return result;
@@ -45,7 +50,7 @@ struct Ptr {
     }
 };
 
-template <typename T>
+template<typename T>
 using Win32Local = Ptr<T, LocalFree>;
 
 /***
@@ -69,7 +74,7 @@ std::wstring to_wstring(Value value) {
     status = napi_get_value_string_utf16(
             value.Env(),
             value,
-            reinterpret_cast<char16_t*>(result.data()),
+            reinterpret_cast<char16_t *>(result.data()),
             result.capacity(),
             nullptr);
     NAPI_THROW_IF_FAILED_VOID(value.Env(), status);
@@ -85,7 +90,7 @@ std::wstring to_wstring(Value value) {
 Value to_value(Env env, std::wstring_view str) {
     return String::New(
             env,
-            reinterpret_cast<const char16_t*>(str.data()),
+            reinterpret_cast<const char16_t *>(str.data()),
             str.size());
 }
 
@@ -103,7 +108,7 @@ std::wstring formatSystemError(HRESULT hr) {
             nullptr,
             hr,
             LANG_USER_DEFAULT,
-            (LPWSTR)&message_ptr,
+            (LPWSTR) & message_ptr,
             0,
             nullptr);
 
@@ -129,7 +134,7 @@ std::wstring formatSystemError(HRESULT hr) {
  * @param syscall
  * @return
  */
-Error createWindowsError(napi_env env, HRESULT hr, const char* syscall) {
+Error createWindowsError(napi_env env, HRESULT hr, const char *syscall) {
     napi_value error_value = nullptr;
 
     napi_status status = napi_create_error(

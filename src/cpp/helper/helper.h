@@ -9,6 +9,7 @@
 #include <Windows.h>
 
 std::wstring to_wstring(Napi::Value value);
-Napi::Error createWindowsError(napi_env env, HRESULT hr, const char* syscall);
+
+Napi::Error createWindowsError(napi_env env, HRESULT hr, const char *syscall);
 
 #endif //NATIVE_ADVAPI_WIN_JS_HELPER_H
