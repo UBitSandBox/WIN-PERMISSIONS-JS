@@ -123,8 +123,7 @@ HRESULT FolderPermissionsManager::GetSidFromString(std::wstring sidString, PSID 
 HRESULT FolderPermissionsManager::GetGuidFromSidString(std::wstring sidString, BSTR *guidValue) {
 
     std::wstring pszSearchBase = L"LDAP://<SID=" + sidString + L">";
-    wprintf_s(pszSearchBase.c_str());
-    printf_s("\n");
+    wprintf_s(L"%s\n", pszSearchBase.c_str());
 
     IADsUser *pIADsUserFromSid = NULL;
     CoInitialize(NULL);
@@ -156,8 +155,7 @@ BOOL FolderPermissionsManager::CheckIsMemberUsingSid(PSID groupSid, BSTR guidVal
     std::wstring sidString_w(sidString);
     std::wstring pszSearchBase = L"LDAP://<SID=" + sidString_w + L">";
 
-    wprintf_s(pszSearchBase.c_str());
-    printf_s("\n");
+    wprintf_s(L"%s\n", pszSearchBase.c_str());
 
     IADs *groupFromSid;
     hr = ADsGetObject(pszSearchBase.c_str(), IID_IADs, (void **) &groupFromSid);
@@ -165,8 +163,7 @@ BOOL FolderPermissionsManager::CheckIsMemberUsingSid(PSID groupSid, BSTR guidVal
     if (SUCCEEDED(hr)) {
         BSTR adName;
         groupFromSid->get_Name(&adName);
-        wprintf_s(adName);
-        printf_s("\n");
+        wprintf_s(L"%s\n", adName);
 
         VARIANT dnVariant;
         hr = groupFromSid->Get(CComBSTR(L"distinguishedName"), &dnVariant);
@@ -184,8 +181,7 @@ BOOL FolderPermissionsManager::CheckIsMemberUsingSid(PSID groupSid, BSTR guidVal
             if (SUCCEEDED(hr)) {
                 BSTR adsPath;
                 iaDsGroup->get_ADsPath(&adsPath);
-                wprintf_s(adsPath);
-                printf_s("\n");
+                wprintf_s(L"%s\n", adsPath);
 
                 BOOL result = RecursiveIsMember(iaDsGroup, guidValue);
 
@@ -490,8 +486,7 @@ BOOL FolderPermissionsManager::RecursiveIsMember(IADsGroup *pADsGroup, BSTR user
 
     BSTR adsPath;
     pADsGroup->get_ADsPath(&adsPath);
-    wprintf_s(adsPath);
-    printf_s("\n");
+    wprintf_s(L"%s\n", adsPath);
 
     HRESULT hr = S_OK;
     BOOL bRet = FALSE;
@@ -647,8 +642,7 @@ FolderPermissionsManager::GetUserGroups(PACL pDacl, std::wstring sidString, std:
             }
 
             std::wstring sidString_w(sidString);
-            std::wstring whatever = L"current sid:" + sidString_w + L"\n";
-            wprintf_s(whatever.c_str());
+            wprintf_s(L"current sid: %s\n", sidString_w.c_str());
 
             groupsSids->push_back(sidString_w);
         }
